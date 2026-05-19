@@ -1,3 +1,5 @@
+#Rekam realtime CSI relatif
+
 import serial
 import numpy as np
 import joblib
@@ -5,19 +7,22 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from collections import deque
 
-PORT       = "COM4"
-BAUD       = 115200
+PORT        = "COM4"
+BAUD        = 115200
 WINDOW_SIZE = 50
 FS          = 10
 
-# Load model
-clf = joblib.load("csi_model.pkl")
-print("Model loaded!")
+# Load model dan baseline
+clf           = joblib.load("csi_model_v2.pkl")
+baseline_amp  = np.load("baseline_amp.npy")
+baseline_std  = np.load("baseline_std.npy")
+baseline_rssi = np.load("baseline_rssi.npy")[0]
+print(f"Model & baseline loaded!")
+print(f"Baseline RSSI: {baseline_rssi:.2f} dBm")
 
-# Buffer
-buffer = deque(maxlen=WINDOW_SIZE)
-rssi_buf = deque([0]*100, maxlen=100)
-prediction_history = deque(["?"]*30, maxlen=30)
+buffer           = deque(maxlen=WINDOW_SIZE)
+rssi_buf         = deque([0]*100, maxlen=100)
+prediction_history = deque(["no_human"]*30, maxlen=30)
 
 ser = serial.Serial(PORT, BAUD, timeout=1)
 
@@ -39,26 +44,32 @@ def parse_line(line):
         return None
 
 def extract_features(window):
-    amps = np.array([compute_amplitude(np.array(w[2], dtype=float))
-                     for w in window])
+    amps  = np.array([compute_amplitude(np.array(w[2], dtype=float))
+                      for w in window])
+    rssis = np.array([w[0] for w in window], dtype=float)
+
+    delta      = amps - baseline_amp
+    norm_delta = delta / (baseline_std + 1e-6)
+    rssi_delta = rssis - baseline_rssi
+
     features = []
-    features += list(np.mean(amps, axis=0))
-    features += list(np.std(amps, axis=0))
-    features += list(np.var(amps, axis=0))
-    features.append(np.mean(amps))
-    features.append(np.std(amps))
-    features.append(np.max(amps))
-    features.append(np.min(amps))
+    features += list(np.mean(delta, axis=0))
+    features += list(np.std(delta, axis=0))
+    features += list(np.mean(norm_delta, axis=0))
+    features += list(np.std(norm_delta, axis=0))
+    features.append(np.mean(np.abs(delta)))
+    features.append(np.std(delta))
+    features.append(np.max(np.abs(delta)))
+    features.append(np.mean(norm_delta))
+    features.append(np.std(norm_delta))
+    features.append(np.mean(rssi_delta))
+    features.append(np.std(rssi_delta))
+    features.append(np.max(rssi_delta) - np.min(rssi_delta))
 
-    rssi_vals = np.array([w[0] for w in window], dtype=float)
-    features.append(np.mean(rssi_vals))
-    features.append(np.std(rssi_vals))
-    features.append(np.max(rssi_vals) - np.min(rssi_vals))
-
-    amp_signal = np.mean(amps, axis=1)
-    fft_vals   = np.abs(np.fft.rfft(amp_signal))
-    fft_freqs  = np.fft.rfftfreq(WINDOW_SIZE, d=1.0/FS)
-    features  += list(fft_vals)
+    delta_signal = np.mean(np.abs(delta), axis=1)
+    fft_vals     = np.abs(np.fft.rfft(delta_signal))
+    fft_freqs    = np.fft.rfftfreq(WINDOW_SIZE, d=1.0/FS)
+    features    += list(fft_vals)
     features.append(np.argmax(fft_vals) * FS / WINDOW_SIZE)
     features.append(np.max(fft_vals))
 
@@ -83,17 +94,16 @@ ax1.set_title("RSSI", color="white")
 ax1.tick_params(colors="white")
 ax1.grid(True, alpha=0.2)
 
-# Label deteksi
 detection_text = ax2.text(0.5, 0.5, "Initializing...",
     transform=ax2.transAxes,
     fontsize=48, fontweight="bold",
     ha="center", va="center", color="white")
+confidence_text = ax2.text(0.5, 0.25, "",
+    transform=ax2.transAxes,
+    fontsize=16, ha="center", va="center", color="gray")
 ax2.set_title("Detection", color="white")
-ax2.tick_params(colors="white")
 ax2.set_xticks([])
 ax2.set_yticks([])
-
-current_label = {"value": "?", "count": 0}
 
 def update(frame):
     try:
@@ -104,25 +114,18 @@ def update(frame):
             rssi, noise, values = parsed
             buffer.append((rssi, noise, values))
             rssi_buf.append(rssi)
-
-            # Update RSSI plot
             line_rssi.set_data(range(100), list(rssi_buf))
 
-            # Inference setiap buffer penuh
             if len(buffer) == WINDOW_SIZE:
                 features = extract_features(list(buffer))
-                print(
-                    f"Feature sample - mean: {features[0][0]:.2f}, std: {features[0][64]:.2f}, fft_peak: {features[0][195]:.2f}")
                 pred     = clf.predict(features)[0]
                 proba    = clf.predict_proba(features)[0]
                 confidence = max(proba) * 100
 
                 prediction_history.append(pred)
+                human_count = list(prediction_history).count("human")
+                final_pred  = "human" if human_count >= 15 else "no_human"
 
-                # Majority vote dari 30 prediksi terakhir
-                human_count    = list(prediction_history).count("human")
-                no_human_count = list(prediction_history).count("no_human")
-                final_pred = "human" if human_count >= 8 else "no_human"
                 print(f"Pred: {pred} | Conf: {confidence:.1f}% | Human votes: {human_count}/30")
 
                 if final_pred == "human":
@@ -134,13 +137,13 @@ def update(frame):
                     detection_text.set_color("#44ff44")
                     ax2.set_facecolor("#153d15")
 
-                fig.suptitle(f"Confidence: {confidence:.1f}%",
-                             color="white", fontsize=12)
+                confidence_text.set_text(f"Confidence: {confidence:.1f}% | Votes: {human_count}/30")
+                fig.canvas.draw_idle()
 
-    except Exception as e:
+    except Exception:
         pass
 
-    return line_rssi, detection_text
+    return line_rssi, detection_text, confidence_text
 
 ani = animation.FuncAnimation(fig, update, interval=100, blit=False)
 plt.tight_layout()
