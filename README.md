@@ -25,7 +25,7 @@ This system uses two ESP32-C6 units (TX and RX) to continuously transmit and rec
 | `csi_realtime.py` | Real-time inference and presence detection |
 | `csi_visualizer.py` | CSI amplitude visualization and analysis |
 
-## Getting Started
+## Procedure
 
 **1. Flash firmware**
 
