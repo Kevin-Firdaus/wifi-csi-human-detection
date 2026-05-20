@@ -33,17 +33,17 @@ Using Arduino IDE:
 - Open `Firmware/TX/TX.ino` → select ESP32-C6 board → upload to transmitter unit
 - Open `Firmware/RX/RX.ino` → select ESP32-C6 board → upload to receiver unit
 
-**2. Install dependencies**
+**2. Installing dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-**3. Calibrate**
+**3. Calibration**
 ```bash
 python csi_calibrate.py
 ```
 
-**4. Collect data and train**
+**4. Model training and data collection**
 ```bash
 python csi_logger.py
 python csi_train.py
