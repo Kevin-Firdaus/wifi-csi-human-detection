@@ -54,6 +54,22 @@ python csi_train.py
 python csi_realtime.py
 ```
 
+## Realtime Serial Monitor
+
+
+
+https://github.com/user-attachments/assets/d93277cf-716b-4350-8b9f-c59040b73f4f
+
+
+
+## Confusion Matrix
+
+<img width="933" height="864" alt="Screenshot 2026-05-17 102632" src="https://github.com/user-attachments/assets/fcd48796-21b0-4753-a820-7e0dd73698d0" />
+
+<img width="1276" height="789" alt="Screenshot 2026-05-17 102648" src="https://github.com/user-attachments/assets/9e6f02f5-90af-4155-8a08-48de7dbfdcba" />
+
+
+
 ## Dataset
 
 Sample CSI data is provided in `data/sample/csi_sample.csv`.
